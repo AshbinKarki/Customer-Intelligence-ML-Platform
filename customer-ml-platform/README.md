@@ -167,6 +167,3 @@ pytest tests/ -v --cov=src
 3. Run tests & linting
 4. Submit pull request
 
-## 📄 License
-
-MIT License
