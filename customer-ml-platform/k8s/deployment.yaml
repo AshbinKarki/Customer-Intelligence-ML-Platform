@@ -1,0 +1,312 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: customer-ml
+
+---
+# API Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-ml-api
+  namespace: customer-ml
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: customer-ml-api
+  template:
+    metadata:
+      labels:
+        app: customer-ml-api
+    spec:
+      containers:
+      - name: api
+        image: customer-ml-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        env:
+        - name: API_HOST
+          value: "0.0.0.0"
+        - name: API_PORT
+          value: "8000"
+        - name: MLFLOW_TRACKING_URI
+          value: "http://customer-ml-mlflow:5000"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: url
+        - name: REDIS_URL
+          value: "redis://customer-ml-redis:6379/0"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+---
+# API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: customer-ml-api
+  namespace: customer-ml
+spec:
+  type: LoadBalancer
+  selector:
+    app: customer-ml-api
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 8000
+
+---
+# Dashboard Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-ml-dashboard
+  namespace: customer-ml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customer-ml-dashboard
+  template:
+    metadata:
+      labels:
+        app: customer-ml-dashboard
+    spec:
+      containers:
+      - name: dashboard
+        image: customer-ml-dashboard:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8501
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+---
+# Dashboard Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: customer-ml-dashboard
+  namespace: customer-ml
+spec:
+  type: LoadBalancer
+  selector:
+    app: customer-ml-dashboard
+  ports:
+  - protocol: TCP
+    port: 8501
+    targetPort: 8501
+
+---
+# PostgreSQL StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: customer-ml-postgres
+  namespace: customer-ml
+spec:
+  serviceName: customer-ml-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customer-ml-postgres
+  template:
+    metadata:
+      labels:
+        app: customer-ml-postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: password
+        - name: POSTGRES_DB
+          value: "customer_ml"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi
+
+---
+# PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: customer-ml-postgres
+  namespace: customer-ml
+spec:
+  clusterIP: None
+  selector:
+    app: customer-ml-postgres
+  ports:
+  - protocol: TCP
+    port: 5432
+    targetPort: 5432
+
+---
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-ml-redis
+  namespace: customer-ml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customer-ml-redis
+  template:
+    metadata:
+      labels:
+        app: customer-ml-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: redis-storage
+          mountPath: /data
+      volumes:
+      - name: redis-storage
+        emptyDir: {}
+
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: customer-ml-redis
+  namespace: customer-ml
+spec:
+  selector:
+    app: customer-ml-redis
+  ports:
+  - protocol: TCP
+    port: 6379
+    targetPort: 6379
+
+---
+# Horizontal Pod Autoscaler for API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: customer-ml-api-hpa
+  namespace: customer-ml
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: customer-ml-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: customer-ml-config
+  namespace: customer-ml
+data:
+  config.yaml: |
+    api:
+      host: "0.0.0.0"
+      port: 8000
+      workers: 4
+    database:
+      pool_size: 20
+      max_overflow: 10
+    redis:
+      cache_ttl: 3600
+    models:
+      batch_size: 1000
+      cache_enabled: true
+
+---
+# Secret for database credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: database-credentials
+  namespace: customer-ml
+type: Opaque
+data:
+  url: cG9zdGdyZXM6Ly9wb3N0Z3JlczpwYXNzd29yZEBjdXN0b21lci1tbC1wb3N0Z3Jlczo1NDMyL2N1c3RvbWVyX21s  # base64 encoded
+  password: cGFzc3dvcmQ=  # base64 encoded

@@ -1,0 +1,134 @@
+project:
+  name: "Customer ML Platform"
+  version: "1.0.0"
+  environment: "development"
+
+data:
+  raw_path: "data/raw"
+  processed_path: "data/processed"
+  test_split: 0.2
+  validation_split: 0.1
+  random_state: 42
+
+features:
+  target_col: "churned"
+  id_col: "customer_id"
+  date_col: "date"
+  categorical_features:
+    - "country"
+    - "device_type"
+    - "subscription_tier"
+  numerical_features:
+    - "total_purchases"
+    - "avg_order_value"
+    - "days_active"
+    - "login_frequency"
+    - "support_tickets"
+
+models:
+  segmentation:
+    kmeans:
+      n_clusters: 5
+      n_init: 10
+      max_iter: 300
+      random_state: 42
+    dbscan:
+      eps: 0.5
+      min_samples: 5
+    hierarchical:
+      n_clusters: 5
+      linkage: "ward"
+  
+  churn:
+    xgboost:
+      n_estimators: 200
+      max_depth: 6
+      learning_rate: 0.1
+      subsample: 0.8
+      colsample_bytree: 0.8
+      random_state: 42
+      scale_pos_weight: 3
+    
+    lightgbm:
+      n_estimators: 200
+      max_depth: 6
+      learning_rate: 0.1
+      num_leaves: 31
+      random_state: 42
+      scale_pos_weight: 3
+    
+    neural_network:
+      hidden_layers: [256, 128, 64]
+      dropout: 0.3
+      epochs: 50
+      batch_size: 32
+      validation_split: 0.2
+  
+  recommendation:
+    n_latent_factors: 50
+    learning_rate: 0.01
+    n_iterations: 100
+    regularization: 0.01
+    n_recommendations: 10
+  
+  nlp:
+    max_features: 5000
+    max_length: 150
+    epochs: 20
+    batch_size: 32
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  reload: true
+  log_level: "info"
+
+database:
+  postgres:
+    host: "localhost"
+    port: 5432
+    database: "customer_ml"
+    user: "postgres"
+    password: "password"
+  
+  redis:
+    host: "localhost"
+    port: 6379
+    db: 0
+    ttl: 3600
+
+mlflow:
+  tracking_uri: "http://localhost:5000"
+  experiment_name: "customer-ml-platform"
+  registry_uri: "sqlite:///mlflow.db"
+
+airflow:
+  dag_folder: "airflow/dags"
+  base_log_folder: "airflow/logs"
+  dags_are_paused_at_creation: false
+
+monitoring:
+  prometheus_port: 9090
+  metrics_update_interval: 60
+  alert_threshold:
+    model_accuracy: 0.80
+    prediction_latency: 0.5
+
+cloud:
+  provider: "aws"
+  aws:
+    region: "us-east-1"
+    bucket: "customer-ml-models"
+    role_arn: "arn:aws:iam::123456789:role/ml-role"
+  
+  gcp:
+    project_id: "your-project"
+    bucket: "customer-ml-models"
+    region: "us-central1"
+
+inference:
+  batch_size: 1000
+  realtime_timeout: 5
+  cache_enabled: true
+  cache_ttl: 3600

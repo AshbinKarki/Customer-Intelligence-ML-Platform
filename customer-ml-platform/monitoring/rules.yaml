@@ -1,0 +1,36 @@
+groups:
+  - name: customer_ml_alerts
+    interval: 30s
+    rules:
+      - alert: HighChurnRate
+        expr: churn_rate > 0.25
+        for: 5m
+        annotations:
+          summary: "High customer churn rate detected"
+          description: "Churn rate is {{ $value | humanizePercentage }}"
+
+      - alert: ModelAccuracyDrop
+        expr: model_accuracy < 0.80
+        for: 10m
+        annotations:
+          summary: "Model accuracy has dropped below threshold"
+          description: "Model accuracy is {{ $value | humanizePercentage }}"
+
+      - alert: PredictionLatencyHigh
+        expr: prediction_latency_ms > 1000
+        for: 5m
+        annotations:
+          summary: "High prediction latency detected"
+          description: "Average latency is {{ $value }}ms"
+
+      - alert: DatabaseConnectionFailed
+        expr: up{job="postgres"} == 0
+        for: 1m
+        annotations:
+          summary: "Database connection failed"
+
+      - alert: APIServerDown
+        expr: up{job="customer-ml-api"} == 0
+        for: 2m
+        annotations:
+          summary: "API server is down"
