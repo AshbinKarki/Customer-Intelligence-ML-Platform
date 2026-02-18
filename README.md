@@ -39,6 +39,7 @@ Prometheus metrics
 Grafana dashboards
 Model performance monitoring
 📁 Project Structure
+
 customer-ml-platform/
 ├── data/                           # Raw & processed data
 ├── src/
